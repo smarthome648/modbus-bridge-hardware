@@ -1,0 +1,39 @@
+{
+  "name": "modbus-bridge-hardware",
+  "version": "1.0.0",
+  "description": "Modbus bridge hardware configurations",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "help": "node .bin/cli.js help",
+    "start": "node .bin/cli.js start"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/2smart-tech/modbus-bridge-hardware.git"
+  },
+  "keywords": [
+    "modbus",
+    "2Smart",
+    "modbus",
+    "protocol"
+  ],
+  "author": "2Smart Core Team",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/2smart-tech/modbus-bridge-hardware/issues"
+  },
+  "homepage": "https://github.com/2smart-tech/modbus-bridge-hardware#readme",
+  "dependencies": {
+    "bluebird": "^3.7.2",
+    "cli-progress": "^3.8.2",
+    "console.table": "^0.10.0",
+    "dotenv": "^8.2.0",
+    "fs-extra": "^9.0.1",
+    "path": "^0.12.7",
+    "underscore": "^1.11.0",
+    "yargs": "^15.4.1"
+  }
+}
