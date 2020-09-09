@@ -51,7 +51,7 @@ async function startBridge(yarv){
 
     await clear();
 
-    console.log(cmd);
+    //console.log(cmd);
     let proc = null;
     let enabled_restarts = !!restart_delay;
     let need_restart = false;
@@ -105,10 +105,7 @@ async function startBridge(yarv){
         proc.stderr.on('data', message => console.error(message));
         proc.on('message', message => console.error(message));
         proc.on('error', e => console.error(e));
-        proc.on('exit', () => {
-            running = false;
-            console.log('Process exited!');
-        });
+        proc.on('exit', () => console.log('Process exited!'));
         proc.on('disconnect', () => console.log('Disconnected!'));
         proc.on('close', () => {
             running = false;
@@ -118,261 +115,167 @@ async function startBridge(yarv){
     }
     await restart();
 }
-async function showSupportedDeviceList (yarv) {
-    const data = {};
-    let files = fs.readdirSync(path.resolve(__dirname, '../etc/config.nodes'));
-    files.forEach(function(filename){
-        const { name } = path.parse(filename);
-        data[name] = data[name] || {};
-        data[name].configFile = true;
-    });
+function loadConfigs(hardware) {
+    const arr = hardware.split('.');
+    const params = [];
 
-    let dir = path.resolve(__dirname, '../docs/nodes');
-    files = fs.readdirSync(dir);
-    files.forEach(function(filename){
-        const curpath = path.join(dir, filename);
-        if(!fs.lstatSync(curpath).isDirectory()){
-            console.warn(`${curpath} is not directory.`);
-            return;
-        }
-        data[filename] = data[filename] || {};
-        data[filename].hasModbusApiFile = fs.existsSync(path.join(curpath, 'modbus_api.md'));
-        data[filename].hasSetSlaveIdFile = fs.existsSync(path.join(curpath, 'set_slave_id.md'));
-        data[filename].hasHelpersJsFile = fs.existsSync(path.join(curpath, 'helpers.js'));
-        let helpers = null;
-        try {
-            helpers = require(path.join(curpath, 'helpers'));
-        } catch (e) {
-            if (e.code!=='MODULE_NOT_FOUND') throw e;
-        }
-        data[filename].helpersFile = !!helpers;
-        if(helpers) data[filename] = { ...helpers, ... data[filename]} ;
-    });
-    const list = [];
-    for(let name in data){
-        if(!data[name].configFile) console.warn(`\x1b[33mNo config file\x1b[0m for node ${name}.`);
-        if(!data[name].hasModbusApiFile) console.warn(`\x1b[33mNo modbus_api.md file\x1b[0m for node ${name}.`);
-        if(!data[name].hasSetSlaveIdFile) console.warn(`\x1b[33mNo set_slave_id.md file\x1b[0m for node ${name}.`);
-        if(!data[name].hasHelpersJsFile) console.warn(`\x1b[33mNo helpers.js file\x1b[0m for node ${name}.`);
-        if (data[name].variations){
-            const variations = data[name].variations;
-            for (let part in variations){
-                list.push({ name: name+'.'+part, description: data[name].description + ' | ' + (variations[part].description||'') });
-            }
-        } else list.push({name, description: data[name].description});
-    }
-    console.table(list);
-}
-async function scanDeviceSlaveId (yarv) {
-    let modbusConnectionConfig = {
-        type                    : yarv.protocol,
-        ip                      : yarv.host,
-        port                    : yarv.port,
-        reconnect               : false,
-        retryConnectionInterval : 0
-    };
-    const { from, to, timeout } = yarv;
-    let checkObj = null;
-    if (yarv.hardware){
-        let dir = path.resolve(__dirname, '../docs/nodes');
-        const arr = yarv.hardware.split('.');
-        const params = [];
-
-        while (arr.length) {
-            try {
-                console.log(`../docs/nodes/${arr.join('.')}/helpers`);
-                const helpers = require(path.join(dir, arr.join('.'), 'helpers'));
-                console.log('\x1b[32mMODULE_FOUND\x1b[0m');
-                checkObj = {...(checkObj||{}),
-                    ...helpers.check,
-                    ...((params.length && helpers.variations && helpers.variations[params.join('.')] && helpers.variations[params.join('.')].check) || {})
-                };
-                break;
-            } catch (e) {
-                if (e.code!=='MODULE_NOT_FOUND') throw e;
-                console.log('\x1b[33mMODULE_NOT_FOUND\x1b[0m');
-                params.unshift(arr.pop());
-            }
-            if (checkObj) break;
-        }
-        if (checkObj === null) throw new Error(`Cannot load node module(${yarv.hardware})`);
-    } else {
-        checkObj =_.pick(yarv, 'function', 'address');
-        if(yarv.function===undefined) throw new Error('function is required.') ;
-        if(yarv.address===undefined) throw new Error('address is required.') ;
-        if(yarv.function === 'writeSingleCoil') {
-            if(yarv.data===undefined) throw new Error('data is required.') ;
-            checkObj.value = yarv.data==='1';
-        }
-        else if(yarv.function === 'writeSingleRegister') {
-            if(yarv.data===undefined) throw new Error('data is required.') ;
-            checkObj.value = Buffer.from(yarv.data);
-        }
-        else if(yarv.function === 'writeMultipleCoils') {
-            if(yarv.data===undefined) throw new Error('data is required.') ;
-            checkObj.values = yarv.data.split('').map((c)=>c==='1');
-        }
-        else if(yarv.function === 'writeMultipleRegisters') {
-            if(yarv.data===undefined) throw new Error('data is required.') ;
-            checkObj.values = yarv.data.match(/.{1,4}/g).map((r)=>Buffer.from(r));
-        }
-        else {
-            if(yarv.quantity===undefined) throw new Error('quantity is required.') ;
-            checkObj.quantity = yarv.quantity;
-        }
-    }
-
-    const ModbusConnection = require(path.resolve(__dirname, '../lib/modbus-bridge/modbus_connection'));
-    const Deferred = require(path.resolve(__dirname, '../lib/Deferred/Deferred'));
-
-    const modbusConnection = new ModbusConnection({ ...modbusConnectionConfig, debug: null });
-    const connectHandler = () => {
-        console.log('\x1b[32mConnected\x1b[0m');
-    };
-    const closeHandler = () => {
-        console.log('\x1b[33mConnection closed\x1b[0m');
-    };
-    modbusConnection.on('connect', connectHandler);
-    modbusConnection.on('close', closeHandler);
-    modbusConnection.on('error', errorHandler);
-    await modbusConnection.connect();
-    if (!modbusConnection.connected) errorHandler(Error('Connection is not established'));
-
-    let checkFunc = null;
-    if (checkObj.function === 'readCoils'
-        || checkObj.function === 'readDiscreteInputs'
-        || checkObj.function === 'readHoldingRegisters'
-        || checkObj.function === 'readInputRegisters'){
-        if(checkObj.address===undefined) errorHandler(new Error('address is not provided.'), true) ;
-        if(checkObj.quantity===undefined) errorHandler(new Error('quantity is not provided.'), true) ;
-        checkFunc = async (unitId)=>{
-            return await modbusConnection[checkObj.function]({..._.pick(checkObj, 'address', 'quantity'), extra: { unitId }});
-        }
-    }
-    else if (checkObj.function==='writeSingleCoil' || checkObj.function==='writeSingleRegister'){
-        if(checkObj.address===undefined) errorHandler(new Error('address is not provided.'), true) ;
-        if(checkObj.value===undefined) errorHandler(new Error('value is not provided.'), true) ;
-        checkFunc = async (unitId)=>{
-            return await modbusConnection[checkObj.function]({..._.pick(checkObj, 'address', 'value'), extra: { unitId }});
-        }
-    }
-    else if (checkObj.function==='writeMultipleCoils' || checkObj.function==='writeMultipleRegisters'){
-        if(checkObj.address===undefined) errorHandler(new Error('address is not provided.'), true) ;
-        if(checkObj.value===undefined) errorHandler(new Error('values is not provided.'), true) ;
-        checkFunc = async (unitId)=>{
-            return await modbusConnection[checkObj.function]({..._.pick(checkObj, 'address', 'values'), extra: { unitId }});
-        }
-    }
-    else  errorHandler(new Error(`Unsupported function '${checkObj.function}'.`));
-
-    const multibar = new cliProgress.MultiBar({}, cliProgress.Presets.shades_grey);
-    const size = to -from +1;
-    const btry = multibar.create(size, 0);
-    const bresult = multibar.create(size, 0);
-
-    const promises = [];
-
-    let currentSlaveId = from;
-    let pendingAmount = 0;
-    let finished = false;
-
-    if(timeout<2) console.wwarn(`\x1b[33mTimeout is too low. The result may be wrong.`);
-    let intervalTimeout = setInterval(async ()=>{
-        const slaveId = currentSlaveId;
-        btry.increment();
-        currentSlaveId++;
-        pendingAmount++;
-        promises.push(checkFunc(slaveId).then(() => {
-            bresult.increment();
-            multibar.stop();
-            clearInterval(intervalTimeout);
-            finished = true;
-            console.log('\x1b[33mSlave id found:\x1b[0m '+slaveId);
-            modbusConnection.off('connect', connectHandler);
-            modbusConnection.off('close', closeHandler);
-            modbusConnection.on('error', ()=>{});
-            modbusConnection.off('error', errorHandler);
-            modbusConnection.close();
-        }, () => {
-            bresult.increment();
-        }).then(function(){
-            pendingAmount--;
-            if(finished && pendingAmount===0){
-                console.log('\x1b[31mCannot find slaveId.\x1b[0m');
-                process.exit(1);
-            }
-        }));
-        if (slaveId>=to) {
-            clearInterval(intervalTimeout);
-            finished = true;
-        }
-    }, timeout*1000);
-}
-async function setDeviceSlaveId (yarv) {
-    let modbusConnectionConfig = {
-        type                    : yarv.protocol,
-        ip                      : yarv.host,
-        port                    : yarv.port,
-        reconnect               : false,
-        retryConnectionInterval : 0
-    };
-    let set_slave_id = null;
-    let dir = path.resolve(__dirname, '../docs/nodes');
-    let arr = yarv.hardware.split('.');
-    let params = [];
     while (arr.length) {
         try {
-            console.log(`../docs/nodes/${arr.join('.')}/helpers`);
-            const helpers = require(path.join(dir, arr.join('.'),'helpers'));
+            console.log(`../hardware/${arr.join('.')}`);
+            let config = require(path.join('../hardware/', arr.join('.')));
+
+            console.log(`../hardware-maintain/${arr.join('.')}`);
+            let helpers = require(path.join('../hardware-maintain', arr.join('.')));
+            
+            if (typeof config === 'function') {
+                config = config(...params);
+                helpers = { ...helpers, ...helpers.variations[params.join('.')] }
+            }
+
             console.log('\x1b[32mMODULE_FOUND\x1b[0m');
-            set_slave_id = (params.length && helpers.variations && helpers.variations[params.join('.')] && helpers.variations[params.join('.')].set_slave_id)
-                || (helpers.set_slave_id) || null;
-            if (!set_slave_id) errorHandler(new Error(`set_slave_id function is not set for hardware ${yarv.hardware}`));
-            break;
+            return { helpers, config };
         } catch (e) {
             if (e.code!=='MODULE_NOT_FOUND') throw e;
             console.log('\x1b[33mMODULE_NOT_FOUND\x1b[0m');
             params.unshift(arr.pop());
         }
     }
+    throw new Error(`Cannot load node module(${yarv.hardware})`);
+}
+async function showSupportedDeviceList (yarv) {
+    const data = {};
+    let modules = _.uniq([
+        ...fs.readdirSync(path.resolve(__dirname, '../hardware-maintain')),
+        ...fs.readdirSync(path.resolve(__dirname, '../hardware')).map(filename => {
+            const { name } = path.parse(filename);
+            return name;
+        })
+    ]);
+    for (const module of modules) {
+        let config = require(path.join('../hardware', module));
+        const helpers = require(path.join('../hardware-maintain', module));
 
-    if (!set_slave_id) errorHandler(new Error(`Cannot find helper config for hardware ${yarv.hardware}`));
+        if (typeof config === 'function') {
+            if (!helpers.variations) throw new Error(`variations field is not defined in module ${path.join('hardware-maintain', module)}`);
+            if (!Object.keys(helpers.variations).length) throw new Error(`variations object is not empty in module ${path.join('hardware-maintain', module)}`);
+            
+            for(const [params, v] of Object.entries(helpers.variations)) {
+                const hardware = `${module}.${params}`;
 
+                lconfig = config(...params.split('.'));
+                lhelpers = { ...helpers, ...v}
+                if(!lhelpers.description) console.warn(`description field is not defined in template-module ${path.join('hardware-maintain', module)}(.${params})`);
+                if(!lhelpers.tags) console.warn(`description field is not defined in template-module ${path.join('hardware-maintain', module)}(.${params})`);
+                if(!lhelpers.set_slave_id) console.warn(`set_slave_id function is not defined in template-module ${path.join('hardware-maintain', module)}(.${params})`);
 
-    const ModbusConnection = require(path.resolve(__dirname, '../lib/modbus-bridge/modbus_connection'));
-    const Deferred = require(path.resolve(__dirname, '../lib/Deferred/Deferred'));
+                data[hardware] = {
+                    type:'js-export-template-function',
+                    params,
+                    module,
+                    hardware,
+                    description: lhelpers.description,
+                    tags: lhelpers.tags
+                };
+            }
+        } else {
+            if(!helpers.description) console.warn(`description field is not defined in module ${path.join('hardware-maintain', module)}`);
+            if(!helpers.tags) console.warn(`description field is not defined in module ${path.join('hardware-maintain', module)}`);
+            if(!helpers.set_slave_id) console.warn(`set_slave_id function is not defined in module ${path.join('hardware-maintain', module)}`);
 
-    const modbusConnection = new ModbusConnection({ ...modbusConnectionConfig, debug: null });
-    const connectHandler = () => {
-        console.log('\x1b[32mConnected\x1b[0m');
-    };
-    const closeHandler = () => {
-        console.log('\x1b[33mConnection closed\x1b[0m');
-    };
-    modbusConnection.on('connect', connectHandler);
-    modbusConnection.on('close', closeHandler);
-    modbusConnection.on('error', errorHandler);
-    await modbusConnection.connect();
-    if (!modbusConnection.connected) errorHandler(new Error('Connection is not established'));
+            const hardware = module;
+            
+            data[hardware] = {
+                type:'json/js-export-json',
+                module,
+                hardware,
+                description: helpers.description,
+                tags: helpers.tags
+            };
+        }
+    }
+    const list = [];
+    for(const [hardware, {tags, description, type, module }] of Object.entries(data)){
+        list.push({ hardware, description, type, tags, module});
+    }
+    console.table(list);
+}
+async function scanDeviceSlaveId (yarv) {
+    const proxy_arguments = ['protocol', 'host', 'port', 'hardware', 'current-slave-id', 'new-slave-id'];
 
+    let { "container-name" : container_name }  = yarv;
+    async function clear() {
+        execSync(`docker stop ${container_name} 2>&1 || true`, {encoding:'utf8'});
+        execSync(`docker rm ${container_name} 2>&1 || true`, {encoding:'utf8'});
+    }
 
-    var res = await set_slave_id({modbusConnection, currentSlaveId: yarv['current-slave-id'], newSlaveId: yarv['new-slave-id'], params:params });
-    console.log('\x1b[32mOK: \x1b[0m old slave id - '+yarv['current-slave-id']);
-    console.log('\x1b[32mOK: \x1b[0m new slave id - '+yarv['new-slave-id']);
-    if (res.resetIsRequired) console.log('\x1b[33mPlease, reset the device in order changes to be applied.\x1b[0m');
-    else console.log('\x1b[32mReset is not requred.\x1b[0m');
+    let cmd = `docker run --name=${JSON.stringify(container_name)} `+
+    ` -v ${path.resolve(process.cwd(), 'hardware')}:/etc/config.nodes -v ${path.resolve(process.cwd(), 'hardware-maintain')}:/etc/hardware-maintain`+
+    ` registry.gitlab.webbylab.com/smarthome/modbus-bridge:market node .bin/cli.js scan`+
+    ` ${proxy_arguments.map(k => (yarv[k] !== undefined) ? `--${k}=${JSON.stringify(yarv[k])}` : yarv[k] ).filter(v => v).join(' ')}`;
 
-        modbusConnection.off('connect', connectHandler);
-    modbusConnection.off('close', closeHandler);
-    modbusConnection.on('error', ()=>{});
-    modbusConnection.off('error', errorHandler);
-    modbusConnection.close();
+    await clear();
+
+    console.log(cmd);
+    let proc = null;
+    process.on('SIGINT', async () => {
+        console.log("Caught interrupt signal");
+        await clear();
+        process.exit(0);
+    });
+
+    proc = exec(cmd, {encoding:'utf8', cwd: process.cwd()}, (error, stdout, stderr) => {
+        console.log('Finished');
+    });
+    proc.stdout.on('data', message => console.error(message));
+    proc.stderr.on('data', message => console.error(message));
+    proc.on('message', message => console.error(message));
+    proc.on('error', e => console.error(e));
+    //proc.on('exit', () => console.log('Process exited!'));
+    proc.on('disconnect', () => console.log('Disconnected!'));
+    //proc.on('close', () => console.log('Process closed!'));
+}
+async function setDeviceSlaveId (yarv) {
+    const proxy_arguments = ['protocol', 'host', 'port', 'hardware', 'current-slave-id', 'new-slave-id'];
+    let { "container-name" : container_name }  = yarv;
+
+    async function clear() {
+        execSync(`docker stop ${container_name} 2>&1 || true`, {encoding:'utf8'});
+        execSync(`docker rm ${container_name} 2>&1 || true`, {encoding:'utf8'});
+    }
+
+    let cmd = `docker run --name=${JSON.stringify(container_name)} `+
+    ` -v ${path.resolve(process.cwd(), 'hardware')}:/etc/config.nodes -v ${path.resolve(process.cwd(), 'hardware-maintain')}:/etc/hardware-maintain`+
+    ` registry.gitlab.webbylab.com/smarthome/modbus-bridge:market node .bin/cli.js set-slave-id `+
+    ` ${proxy_arguments.map(k => (yarv[k] !== undefined) ? `--${k}=${JSON.stringify(yarv[k])}` : yarv[k] ).filter(v => v).join(' ')}`;
+
+    await clear();
+
+    let proc = null;
+    process.on('SIGINT', async () => {
+        console.log("Caught interrupt signal");
+        await clear();
+        process.exit(0);
+    });
+
+    proc = exec(cmd, {encoding:'utf8', cwd: process.cwd()}, (error, stdout, stderr) => {
+        console.log('Finished');
+    });
+    proc.stdout.on('data', message => console.error(message));
+    proc.stderr.on('data', message => console.error(message));
+    proc.on('message', message => console.error(message));
+    proc.on('error', e => console.error(e));
+    //proc.on('exit', () => console.log('Process exited!'));
+    proc.on('disconnect', () => console.log('Disconnected!'));
+    //proc.on('close', () => console.log('Process closed!'));
 }
 
 
 const yargs = YARGS
     .command('help', 'Show help', function (){
         return yargs.showHelp();
+    }, showSupportedDeviceList)
+    .command('list', 'Get list of supported devices', function (yargs){
+        return yargs;
     }, showSupportedDeviceList)
     .command('start', 'Start modbus bridge', function (yargs){
         return yargs
@@ -455,12 +358,21 @@ const yargs = YARGS
             })
             .option('host', {
                 description: 'Host or ip address',
-                type: 'string'
+                type: 'string',
+                default : process.env.HOST || undefined,
+                demandOption: true
             })
             .option('port', {
                 description: 'Port number',
                 type: 'number',
-                default : 502
+                default : process.env.PORT || 502,
+                demandOption: true
+            })
+            .option('container-name', {
+                description: 'Docker container name',
+                type: 'string',
+                default : process.env.CONTAINER_NAME || 'modbus-hardware-develop',
+                demandOption: true
             })
             .option('hardware', {
                 description: 'Name of hardware to load test function',
@@ -514,12 +426,21 @@ const yargs = YARGS
             })
             .option('host', {
                 description: 'Host or ip address',
-                type: 'string'
+                type: 'string',
+                default : process.env.HOST || undefined,
+                demandOption: true
             })
             .option('port', {
                 description: 'Port number',
                 type: 'number',
-                default : 502
+                default : process.env.PORT || 502,
+                demandOption: true
+            })
+            .option('container-name', {
+                description: 'Docker container name',
+                type: 'string',
+                default : process.env.CONTAINER_NAME || 'modbus-hardware-develop',
+                demandOption: true
             })
             .option('hardware', {
                 description: 'Name of current device',
@@ -537,6 +458,7 @@ const yargs = YARGS
             }).requiresArg(['protocol', 'host','port', 'hardware']);
     }, setDeviceSlaveId)
     .demandCommand(1, 'ERROR: missing parametrs. See: -h')
+    .version(false)
     .help('help')
     .alias('help', 'h')
     .scriptName("npm run").fail(function (msg, err, yargs) {

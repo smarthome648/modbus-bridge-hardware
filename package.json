@@ -8,7 +8,10 @@
   },
   "scripts": {
     "help": "node .bin/cli.js help",
-    "start": "node .bin/cli.js start"
+    "start": "node .bin/cli.js start",
+    "list": "node .bin/cli.js list",
+    "scan": "node .bin/cli.js scan",
+    "set-slave-id": "node .bin/cli.js set-slave-id"
   },
   "repository": {
     "type": "git",

@@ -208,6 +208,7 @@ module.exports = function (n) {
 ```
 
 ## Homie iot part
+---
 
 2Smart heavily use [homie mqtt convention](https://homieiot.github.io/specification/) and next fields are
 inspired and directly used according to the convention. 
@@ -233,8 +234,11 @@ inspired and directly used according to the convention.
 
 
 ## "Extensions" part
+---
+
 
 ### Extensions.Transport
+---
 Responsible for sendind particular data to source(modbus line) and receiving data comming from line.
 
 
@@ -248,21 +252,110 @@ use one transport operating with multiple registers,
 than multiple transaports for every register.
 
 ### Extensions.mapping
+---
 Defines connection between properties and transport, as well,
 as type converting rules. `extensions.mapping` is object, with keys - sensors ids,
 or `$options/<option-id>`, `$telemetry/<telemetry-id>` in case of options and telemetry. And values
 are very straightforward understable from example.
 
 ### DataTypeBridge
-Defines convertion from and to modbus register/bit formats.
+---
 
+Defines convertion from and to modbus register/bit formats.
+See examples in [hardware](./hardware)
+
+- `booleanToBooleanArray` - convertion between boolean and boolean modbus array. Params:
+    - `shift` - shift in array
+- `booleanToBufferArray` - convertion between boolean and boolean modbus array. Params:
+    - `shift` - shift in array
+    - `commands` - mapping between value and command in set operations
+
+Parsers using standard buffer parsers:
+- `standardBigInt64` - Params:
+    - `shift` - shift in registers array
+    - `endian` - endianess, `big`/`little`. Default: `big`
+    - `signed` - true/false
+- `standardDouble` - Params:
+    - `shift` - shift in registers array
+    - `endian` - endianess, `big`/`little`. Default: `big`
+    - `signed` - true/false
+- `standardFloat` - Params:
+    - `shift` - shift in registers array
+    - `endian` - endianess, `big`/`little`. Default: `big`
+    - `signed` - true/false
+- `standardInt` - Params
+    - `shiftBytes` - shift in bytes. USe when you need to ignore some bytes of register.
+    - `bytesQuantity` - bytes quantity. Number from 1 to 6.
+    - `shift` - shift in registers array
+    - `endian` - endianess, `big`/`little`. Default: `big`
+    - `signed` - true/false
+- `standardInt8` - Params:
+    - `shift` - shift in registers array
+    - `endian` - endianess, `big`/`little`. Default: `big`
+    - `signed` - true/false
+- `standardInt16` - Params:
+    - `shift` - shift in registers array
+    - `endian` - endianess, `big`/`little`. Default: `big`
+    - `signed` - true/false
+- `standardInt32` - Params:
+    - `shift` - shift in registers array
+    - `endian` - endianess, `big`/`little`. Default: `big`
+    - `signed` - true/false
+
+Layers allows combination of transformations:
+
+- `layerFactor`  - multiplicate received number by `factor`. `homieDataType` - `float`. Params:
+    - `dataTypeBridge`  - child `dataTypeBridge`
+    - `factor`          - multiplication number
+- `layerFloat`          - Changes received float number. Params:
+    - `dataTypeBridge`  - child `dataTypeBridge`
+    - `precision`       - default 0, optional, precision of number
+    - `divider`         - divider for with is pplied for conversion to Homie type, default `Math.pow(10,precision);`
+    - `min`             - min value
+    - `max`             - max value. If number received number is greater than bound - return empty(`-`) value
+- `layerMax` - Params:
+    - `dataTypeBridge`  - child `dataTypeBridge`
+    - `max` - max value. If number received number is greater than bound - return max
+- `layerMin` - Params:
+    - `dataTypeBridge`  - child `dataTypeBridge`
+    - `min` - min value. If number received number is greater than bound - return min
+- `layerOffset` - add offset to received number. Params:
+    - `dataTypeBridge`  - child `dataTypeBridge`
+    - `offset` - offset value
+- `layerPrecision` - change precision of received number. Params:
+    - `dataTypeBridge`  - child `dataTypeBridge`
+    - `precision` - precision value
+- `layerRegistersAndBitMask` - Params:
+    - `dataTypeBridge`  - child `dataTypeBridge`
+    - `precision` - precision value
+- `layerRegistersOrBitMask` - aplly registers mask to registers and propagate data to child parser. Params:
+    - `dataTypeBridge`  - child `dataTypeBridge`
+    - `mask`  - array of size-2-arrays. Ex. [[0x0F, 0xFF]]
+    - `shift`  - shift for mask
+- `layerRegistersXorBitMask` - Params:
+    - `dataTypeBridge`  - child `dataTypeBridge`
+    - `mask`  - array of size-2-arrays. Ex. [[0x0F, 0xFF]]
+    - `shift`  - shift for mask
+- `layerReverseRegistersBytes` - Params:
+    - `dataTypeBridge`  - child `dataTypeBridge`
+    - `mask`  - array of size-2-arrays. Ex. [[0x0F, 0xFF]]
+    - `shift`  - shift for mask
+- `layerReverseRegisters` - Params:
+    - `dataTypeBridge`  - child `dataTypeBridge`
+    - `mask`  - array of size-2-arrays. Ex. [[0x0F, 0xFF]]
+    - `shift`  - shift for mask
+- `sumFloat` - Params:
+    `dataTypesBridge` - array of parser configs to sum
+    `precision`       precision value
 
 # Hardware maintain configs format
-Its file exporting js-object with `description`, `name`, `tags` list, `set_slave_id` function.
-- `name` - device name
+Its file `index.js` exporting js-object with `description`, `name`, `tags` list, `set_slave_id` function.
+- `name` - device name. Optional. Dublicate name from config above
 - `description` - shot explanation of hardware functions
+- `vendor` - vendor name. If unknown - `null`
 - `tags` - comma separated string with list of tags, like company vendor name, device class(thermometer, relay, electricity-meter) etc
-- `set_slave_id` - function that defines the way(promatically or via instructions) how user can change device slave id. If its not defined, not docummented, or just not realized, function should log that operation cannot be done and reason
+- `set_slave_id` - function that defines the way(promatically or via instructions) how user can change device slave id. If tha way to change slave id is not defined, not docummented, or just not realized, function should log that operation cannot be done and reason. If user need to reset device, print message to user describing what should be done.
+- `variations` - required for [Js file exporting function](#Js-file-exporting-function). Object with keys - string of parameters and values - object rewriting values `name`, `description`, `tags`, `set_slave_id`. May be empty. See [ModbusRTU.Relay.RS485RB](./hardware-maintain/ModbusRTU.Relay.RS485RB/index.js).
 
 # Contributing
 
