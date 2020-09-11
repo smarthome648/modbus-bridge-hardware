@@ -200,9 +200,11 @@ async function showSupportedDeviceList (yarv) {
     console.table(list);
 }
 async function scanDeviceSlaveId (yarv) {
-    const proxy_arguments = ['protocol', 'host', 'port', 'hardware', 'current-slave-id', 'new-slave-id'];
-
-    let { "container-name" : container_name }  = yarv;
+    const args = process.argv;
+    while (args[0] !== 'scan') {
+        if (!args.length) throw new Error('scanDeviceSlaveId:::args is empty');
+        args.shift();
+    }
     async function clear() {
         execSync(`docker stop ${container_name} 2>&1 || true`, {encoding:'utf8'});
         execSync(`docker rm ${container_name} 2>&1 || true`, {encoding:'utf8'});
@@ -210,8 +212,10 @@ async function scanDeviceSlaveId (yarv) {
 
     let cmd = `docker run --name=${JSON.stringify(container_name)} `+
     ` -v ${path.resolve(process.cwd(), 'hardware')}:/etc/config.nodes -v ${path.resolve(process.cwd(), 'hardware-maintain')}:/etc/hardware-maintain`+
-    ` registry.gitlab.webbylab.com/smarthome/modbus-bridge:market node .bin/cli.js scan`+
-    ` ${proxy_arguments.map(k => (yarv[k] !== undefined) ? `--${k}=${JSON.stringify(yarv[k])}` : yarv[k] ).filter(v => v).join(' ')}`;
+    ` -it registry.gitlab.webbylab.com/smarthome/modbus-bridge:market node .bin/cli.js ${args.join(' ')}`+
+    ` --host=${JSON.stringify(yarv.host)} --port=${JSON.stringify(yarv.port)}`+
+    ` --hardware=${JSON.stringify(yarv.hardware)} --current-slave-id=${JSON.stringify(yarv['current-slave-id'])} --new-slave-id=${JSON.stringify(yarv['new-slave-id'])}`+
+    ` --protocol=${JSON.stringify(yarv.protocol)}`;
 
     await clear();
 
@@ -230,14 +234,152 @@ async function scanDeviceSlaveId (yarv) {
     proc.stderr.on('data', message => console.error(message));
     proc.on('message', message => console.error(message));
     proc.on('error', e => console.error(e));
-    //proc.on('exit', () => console.log('Process exited!'));
+    proc.on('exit', () => console.log('Process exited!'));
     proc.on('disconnect', () => console.log('Disconnected!'));
-    //proc.on('close', () => console.log('Process closed!'));
+    proc.on('close', () => console.log('Process closed!'));
+    let modbusConnectionConfig = {
+        type                    : yarv.protocol,
+        ip                      : yarv.host,
+        port                    : yarv.port,
+        reconnect               : false,
+        retryConnectionInterval : 0
+    };
+    const { from, to, timeout } = yarv;
+    let checkObj = null;
+    if (yarv.hardware){
+        const { config, helpers } = loadConfigs(yarv.hardware);
+        const transport = [
+            ...config.extensions.transports,
+            ...Object.values(config.extensions.mapping).map(({ transport }) => transport)
+        ].find(transport => {
+            if (transport.advanced && !transport.advanced.get) return false;
+
+            return true;
+        });
+
+        if (!transport) throw new Error(`Cannot find transport for hardware ${yarv.hardware}`);
+
+        const defautlsComParams = _.pick(config, 'function', 'address', 'quantity');
+        comParams = { ..._.pick(transport, 'function', 'address', 'quantity'), ...[transport.advanced && transport.advanced.get] };
+        checkObj = _.pick(comParams, 'address', 'quantity');
+
+
+        if (comParams.function !== 'coils') checkObj.function = 'readCoils';
+        else if (comParams.function !== 'discrete-inputs') checkObj.function = 'readDiscreteInputs';
+        else if (comParams.function !== 'holding-registers') checkObj.function = 'readHoldingRegisters';
+        else if (comParams.function !== 'input-registers') checkObj.function = 'readInputRegisters';
+    } else {
+        checkObj =_.pick(yarv, 'function', 'address');
+        if(yarv.function===undefined) throw new Error('function is required.') ;
+        if(yarv.address===undefined) throw new Error('address is required.') ;
+        if(yarv.function === 'writeSingleCoil') {
+            if(yarv.data===undefined) throw new Error('data is required.') ;
+            checkObj.value = yarv.data==='1';
+        }
+        else if(yarv.function === 'writeSingleRegister') {
+            if(yarv.data===undefined) throw new Error('data is required.') ;
+            checkObj.value = Buffer.from(yarv.data);
+        }
+        else if(yarv.function === 'writeMultipleCoils') {
+            if(yarv.data===undefined) throw new Error('data is required.') ;
+            checkObj.values = yarv.data.split('').map((c)=>c==='1');
+        }
+        else if(yarv.function === 'writeMultipleRegisters') {
+            if(yarv.data===undefined) throw new Error('data is required.') ;
+            checkObj.values = yarv.data.match(/.{1,4}/g).map((r)=>Buffer.from(r));
+        }
+        else {
+            if(yarv.quantity===undefined) throw new Error('quantity is required.') ;
+            checkObj.quantity = yarv.quantity;
+        }
+    }
+
+    const ModbusConnection = require(path.resolve(__dirname, '../lib/modbus-bridge/modbus_connection'));
+
+    const modbusConnection = new ModbusConnection({ ...modbusConnectionConfig, debug: null });
+    const connectHandler = () => {
+        console.log('\x1b[32mConnected\x1b[0m');
+    };
+    const closeHandler = () => {
+        console.log('\x1b[33mConnection closed\x1b[0m');
+    };
+    modbusConnection.on('connect', connectHandler);
+    modbusConnection.on('close', closeHandler);
+    modbusConnection.on('error', errorHandler);
+    await modbusConnection.connect();
+    if (!modbusConnection.connected) errorHandler(Error('Connection is not established'));
+
+    let checkFunc = null;
+    if (checkObj.function === 'readCoils'
+        || checkObj.function === 'readDiscreteInputs'
+        || checkObj.function === 'readHoldingRegisters'
+        || checkObj.function === 'readInputRegisters'){
+        if(checkObj.address===undefined) errorHandler(new Error('address is not provided.'), true) ;
+        if(checkObj.quantity===undefined) errorHandler(new Error('quantity is not provided.'), true) ;
+        checkFunc = async (unitId)=>{
+            return await modbusConnection[checkObj.function]({..._.pick(checkObj, 'address', 'quantity'), extra: { unitId }});
+        }
+    }
+    else if (checkObj.function==='writeSingleCoil' || checkObj.function==='writeSingleRegister'){
+        if(checkObj.address===undefined) errorHandler(new Error('address is not provided.'), true) ;
+        if(checkObj.value===undefined) errorHandler(new Error('value is not provided.'), true) ;
+        checkFunc = async (unitId)=>{
+            return await modbusConnection[checkObj.function]({..._.pick(checkObj, 'address', 'value'), extra: { unitId }});
+        }
+    }
+    else if (checkObj.function==='writeMultipleCoils' || checkObj.function==='writeMultipleRegisters'){
+        if(checkObj.address===undefined) errorHandler(new Error('address is not provided.'), true) ;
+        if(checkObj.value===undefined) errorHandler(new Error('values is not provided.'), true) ;
+        checkFunc = async (unitId)=>{
+            return await modbusConnection[checkObj.function]({..._.pick(checkObj, 'address', 'values'), extra: { unitId }});
+        }
+    }
+    else  errorHandler(new Error(`Unsupported function '${checkObj.function}'.`));
+
+    const multibar = new cliProgress.MultiBar({}, cliProgress.Presets.shades_grey);
+    const size = to -from +1;
+    const btry = multibar.create(size, 0);
+    const bresult = multibar.create(size, 0);
+
+    const promises = [];
+
+    let currentSlaveId = from;
+    let pendingAmount = 0;
+    let finished = false;
+
+    if(timeout<2) console.wwarn(`\x1b[33mTimeout is too low. The result may be wrong.`);
+    let intervalTimeout = setInterval(async ()=>{
+        const slaveId = currentSlaveId;
+        btry.increment();
+        currentSlaveId++;
+        pendingAmount++;
+        promises.push(checkFunc(slaveId).then(() => {
+            bresult.increment();
+            multibar.stop();
+            clearInterval(intervalTimeout);
+            finished = true;
+            console.log('\x1b[33mSlave id found:\x1b[0m '+slaveId);
+            modbusConnection.off('connect', connectHandler);
+            modbusConnection.off('close', closeHandler);
+            modbusConnection.on('error', ()=>{});
+            modbusConnection.off('error', errorHandler);
+            modbusConnection.close();
+        }, () => {
+            bresult.increment();
+        }).then(function(){
+            pendingAmount--;
+            if(finished && pendingAmount===0){
+                console.log('\x1b[31mCannot find slaveId.\x1b[0m');
+                process.exit(1);
+            }
+        }));
+        if (slaveId>=to) {
+            clearInterval(intervalTimeout);
+            finished = true;
+        }
+    }, timeout*1000);
 }
 async function setDeviceSlaveId (yarv) {
-    const proxy_arguments = ['protocol', 'host', 'port', 'hardware', 'current-slave-id', 'new-slave-id'];
-    let { "container-name" : container_name }  = yarv;
-
     async function clear() {
         execSync(`docker stop ${container_name} 2>&1 || true`, {encoding:'utf8'});
         execSync(`docker rm ${container_name} 2>&1 || true`, {encoding:'utf8'});
@@ -245,11 +387,14 @@ async function setDeviceSlaveId (yarv) {
 
     let cmd = `docker run --name=${JSON.stringify(container_name)} `+
     ` -v ${path.resolve(process.cwd(), 'hardware')}:/etc/config.nodes -v ${path.resolve(process.cwd(), 'hardware-maintain')}:/etc/hardware-maintain`+
-    ` registry.gitlab.webbylab.com/smarthome/modbus-bridge:market node .bin/cli.js set-slave-id `+
-    ` ${proxy_arguments.map(k => (yarv[k] !== undefined) ? `--${k}=${JSON.stringify(yarv[k])}` : yarv[k] ).filter(v => v).join(' ')}`;
+    ` -it registry.gitlab.webbylab.com/smarthome/modbus-bridge:market node .bin/cli.js set-slave-id`+
+    ` --host=${JSON.stringify(yarv.host)} --port=${JSON.stringify(yarv.port)}`+
+    ` --hardware=${JSON.stringify(yarv.hardware)} --current-slave-id=${JSON.stringify(yarv['current-slave-id'])} --new-slave-id=${JSON.stringify(yarv['new-slave-id'])}`+
+    ` --protocol=${JSON.stringify(yarv.protocol)}`;
 
     await clear();
 
+    console.log(cmd);
     let proc = null;
     process.on('SIGINT', async () => {
         console.log("Caught interrupt signal");
@@ -264,9 +409,9 @@ async function setDeviceSlaveId (yarv) {
     proc.stderr.on('data', message => console.error(message));
     proc.on('message', message => console.error(message));
     proc.on('error', e => console.error(e));
-    //proc.on('exit', () => console.log('Process exited!'));
+    proc.on('exit', () => console.log('Process exited!'));
     proc.on('disconnect', () => console.log('Disconnected!'));
-    //proc.on('close', () => console.log('Process closed!'));
+    proc.on('close', () => console.log('Process closed!'));
 }
 
 
@@ -358,21 +503,12 @@ const yargs = YARGS
             })
             .option('host', {
                 description: 'Host or ip address',
-                type: 'string',
-                default : process.env.HOST || undefined,
-                demandOption: true
+                type: 'string'
             })
             .option('port', {
                 description: 'Port number',
                 type: 'number',
-                default : process.env.PORT || 502,
-                demandOption: true
-            })
-            .option('container-name', {
-                description: 'Docker container name',
-                type: 'string',
-                default : process.env.CONTAINER_NAME || 'modbus-hardware-develop',
-                demandOption: true
+                default : 502
             })
             .option('hardware', {
                 description: 'Name of hardware to load test function',
@@ -426,21 +562,12 @@ const yargs = YARGS
             })
             .option('host', {
                 description: 'Host or ip address',
-                type: 'string',
-                default : process.env.HOST || undefined,
-                demandOption: true
+                type: 'string'
             })
             .option('port', {
                 description: 'Port number',
                 type: 'number',
-                default : process.env.PORT || 502,
-                demandOption: true
-            })
-            .option('container-name', {
-                description: 'Docker container name',
-                type: 'string',
-                default : process.env.CONTAINER_NAME || 'modbus-hardware-develop',
-                demandOption: true
+                default : 502
             })
             .option('hardware', {
                 description: 'Name of current device',
@@ -458,7 +585,6 @@ const yargs = YARGS
             }).requiresArg(['protocol', 'host','port', 'hardware']);
     }, setDeviceSlaveId)
     .demandCommand(1, 'ERROR: missing parametrs. See: -h')
-    .version(false)
     .help('help')
     .alias('help', 'h')
     .scriptName("npm run").fail(function (msg, err, yargs) {

@@ -149,6 +149,8 @@ module.exports = {
 ```
 
 ## Js file exporting function
+Parameneters to this function are dot separated values following the name of module. For example: Module name: `(module.name.js)`.
+Then for `module.name.1`, `module.name.2`, `module.name.4` will use configs made from `f(1)`, `f(2)`, `f(4)`.
 Example
 ```
 module.exports = function (n) {
@@ -371,4 +373,4 @@ Read our [contributing guide](./CONTRIBUTING.md) to learn about our development 
 
 ## License
 
-The project is [GNU GENERAL PUBLIC v3 licensed](./LICENSE).
+The project is [MIT licensed](./LICENSE).
