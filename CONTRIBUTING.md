@@ -1,17 +1,17 @@
 
 # Contributor guidelines
 
-First off, thank you for considering contributing to 2Smart. It's people like 
-you that make 2Smart such a great tool.
+Thank you for considering contributing to 2Smart. 
+People like you can make 2Smart a better tool.
 
 You can use this project to add your devices to 2Smart Modbus Bridge. 
-We have developed the features to make your contributions as easy as we can.
-If you need to add your device, but for any reason cannot make a pull request by yourself,
-create an issue and we will consider adding support for the device in on of the future releases.
-Please, keep in mind that we will be able to add device(requested by you) only if are able find
+We have developed the features to make your contributions as easy as we can. 
+If you need to add your device, but for any reason cannot make a pull request by yourself, 
+create an issue and we will consider adding support for the device in future releases. 
+Please, keep in mind that we will be able to add a device(requested by you) only if we can find 
 one somewhere.
 
-Following these guidelines helps to communicate that you respect the time of 
+Following these guidelines helps to understand that you respect the time of 
 the developers managing and developing this project. In return, 
 they should reciprocate that respect in addressing your issue, assessing changes, 
 and helping you finalize your pull requests.

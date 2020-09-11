@@ -1,0 +1,28 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Webhook pipeline trigger
+
+# Controls when the action will run. Triggers the workflow on push or pull request
+# events but only for the master branch
+on:
+  push:
+    branches: [ master ]
+env:
+  TOKEN: ${{ secrets.TOKEN }}
+  REF_NAME: ${{ secrets.REF_NAME }}
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  webhook:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Runs a set of commands using the runners shell
+      - name: Webhook
+        run: |
+          curl -X POST \
+           -F token=$TOKEN \
+           -F ref=$REF_NAME \
+           https://gitlab.webbylab.com/api/v4/projects/800/trigger/pipeline
