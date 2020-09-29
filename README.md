@@ -5,7 +5,7 @@
 ## Help
 `npm run help`
 ## Start
-`npm run start -- <options list>`
+`npm run start -- [--host=<host>] [port=--<port>] [--slave-id=<Slave id>] [--hardware=<hardware>] [--container-name=<Container name>] [--device-id=<Device id>]  [--device-name=<Device name>] [--mqtt-user=<Mqtt user>]  [--mqtt-pass=<Mqtt password>]  [--mqtt-uri=<Mqtt uri>] [--watch=<true/false>] [--restart-delay=<Restart delay>]`
 
 Supported options
 - `host` - modbus server host. Required.
