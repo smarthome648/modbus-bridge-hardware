@@ -4,6 +4,7 @@
 
 ## Help
 `npm run help`
+
 ## Start
 `npm run start -- [--host=<host>] [port=--<port>] [--slave-id=<Slave id>] [--hardware=<hardware>] [--container-name=<Container name>] [--device-id=<Device id>]  [--device-name=<Device name>] [--mqtt-user=<Mqtt user>]  [--mqtt-pass=<Mqtt password>]  [--mqtt-uri=<Mqtt uri>] [--watch=<true/false>] [--restart-delay=<Restart delay>]`
 
@@ -34,12 +35,35 @@ Press Ctrl+C to finish process
 List all supported devices
 
 ## Scan
-`npm run list -- <options list>`
+`npm run scan -- <options list>`
+`npm run scan -- [--host=<host>] [port=--<port>] [--hardware=<hardware>] [--container-name=<Container name>]  [--function=<Function>]  [--quantity=<Quantity>]  [--data=<Data>] [--address=<Address>] [--from=<From>] [--to=<To>] [--timeout=<Timeout>]`
+
+Supported options
+- `host` - modbus server host. Required.
+- `port` - modbus server port. Default value: 502
+- `hardware` - name of hardware you are going to start.
+- `container-name` - docker container name. Default value: `modbus-hardware-develop`
+- `function` - Function to exec to test. One of: `readCoils`, `readDiscreteInputs`, `readHoldingRegisters`, `readInputRegisters`, `writeSingleCoil`, `writeSingleRegister`, `writeMultipleCoils`, `writeMultipleRegisters`(See [modbus-stream](https://www.npmjs.com/package/modbus-stream)). Default value: `readCoils`
+- `quantity` - Modbus parameter for read operations. Number of data units. Default value: `1`
+- `data` - Modbus parameter for write operations. HEX representation of data in case of registers, or string of bits(0 or 1). Length should be 4 characters(i.e. 1 register) if function works with single register, or 1 character if function works with 1 coil.
+- `address` - Address for modbus operations. Default value: `0`
+- `from` - Slave id to start from. Default value: `0`
+- `to` - Slave id to end with. Default value: `247`
+- `timeout` - Timeout(in seconds) between tries. Default value: `2`
 
 Scan modbus line for a slave id. Its expected that you have only one device connected to the line.
 
 ## Set slave id
 `npm run set-slave-id -- <options list>`
+`npm run set-slave-id -- [--host=<host>] [port=--<port>] [--hardware=<hardware>] [--container-name=<Container name>]  [--current-slave-id=<Current slave id>]  [--new-id=<New slave id>]`
+
+Supported options
+- `host` - modbus server host. Required.
+- `port` - modbus server port. Default value: 502
+- `hardware` - name of hardware you are going to start.
+- `container-name` - docker container name. Default value: `modbus-hardware-develop`
+- `current-slave-id` - Current slave id. Required
+- `new-slave-id` - New slave id. Required
 
 Change slave id of the hardware. Not all devices are supported, on some device user have to manually set slave id(i.e. not programmatically).
 Some devices don't support change of slave id(maybe support but not documented).
