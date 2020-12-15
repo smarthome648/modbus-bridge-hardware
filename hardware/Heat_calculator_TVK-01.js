@@ -70,7 +70,7 @@ module.exports = {
             }),
 
             //Volume
-            ...[...Array(2).keys()].map((shift) => {
+            ...[...Array(1).keys()].map((shift) => {
                 return [
                     `vol-${shift+1}`,
                     {
@@ -98,7 +98,23 @@ module.exports = {
 		    }
                 ]
             }),
- 
+         //rashod 
+        ...[...Array(1).keys()].map((shift) => {
+                return [
+                    `gvol-${shift+1}`,
+                    {
+                        transportId :'v-m-q3-gv-gm-w3-t-p',
+                        //bridge
+                        dataTypeBridge      : {
+			type:'standardFloat',
+			endian:'big',				
+			shift : 48 + shift*2,
+			precision:4,
+                            
+                        },
+                    }
+                ]
+            }),
         //Temperatures 
         ...[...Array(2).keys()].map((shift) => {
                 return [
@@ -136,7 +152,7 @@ module.exports = {
                 ]
             }),
         //Pressure 
-        ...[...Array(2).keys()].map((shift) => {
+/*         ...[...Array(2).keys()].map((shift) => {
                 return [
                     `press-${shift+1}`,
                     {
@@ -152,9 +168,9 @@ module.exports = {
                         },
                     }
                 ]
-            }),
+            }), */
          //Dp 
-        ...[...Array(1).keys()].map((shift) => {
+/*         ...[...Array(1).keys()].map((shift) => {
                 return [
                     `deltap-${shift+1}`,
                     {
@@ -170,9 +186,9 @@ module.exports = {
                         },
                     }
                 ]
-            }),
+            }), */
          //TS tsch, tos
-            ...[...Array(2).keys()].map((shift) => {
+/*             ...[...Array(2).keys()].map((shift) => {
                 return [
                     `ts1-t-${shift+1}`,
                     {
@@ -188,7 +204,7 @@ module.exports = {
                    	 }
                     }
                 ]
-            }),
+            }), */
         ]),
         
     },
@@ -216,7 +232,7 @@ module.exports = {
         }),
 
         //Volumes
-        ...[...Array(2).keys()].map((shift) => {
+        ...[...Array(1).keys()].map((shift) => {
             return {
                 'id'       : `vol-${shift+1}`,
                 'unit'     : 'm³',
@@ -236,6 +252,16 @@ module.exports = {
                 'name'     : `T${shift+1}`
             }
         }),
+		//Consumption   
+        ...[...Array(1).keys()].map((shift) => {
+            return {
+                'id'       : `gvol-${shift+1}`,
+                'unit'     : 'm³/h',
+                'retained' : true,
+                'settable' : false,
+                'name'     : `Gv${shift+1}`
+            }
+        }),
          //dt    
         ...[...Array(1).keys()].map((shift) => {
             return {
@@ -247,7 +273,7 @@ module.exports = {
             }
         }),     
         //Pressure   
-        ...[...Array(2).keys()].map((shift) => {
+/*         ...[...Array(2).keys()].map((shift) => {
             return {
                 'id'       : `press-${shift+1}`,
                 'unit'     : 'MPa',
@@ -255,9 +281,9 @@ module.exports = {
                 'settable' : false,
                 'name'     : `P${shift+1}`
             }
-        }),
+        }), */
        //dP    
-        ...[...Array(1).keys()].map((shift) => {
+/*         ...[...Array(1).keys()].map((shift) => {
             return {
                 'id'       : `deltap-${shift+1}`,
                 'unit'     : 'MPa',
@@ -265,9 +291,9 @@ module.exports = {
                 'settable' : false,
                 'name'     : `dP`
             }
-        }),
+        }), */
         //TS1 - tsh tos   
-        ...[...Array(2).keys()].map((shift) => {
+/*         ...[...Array(2).keys()].map((shift) => {
             return {
                 'id'       : `ts1-t-${shift+1}`,
                 'unit'     : 'min',
@@ -275,7 +301,7 @@ module.exports = {
                 'settable' : false,
                 'name'     : `T${(['cnt - thermal energy count time', 'stop - thermal energy count stop time'])[shift]}`
             }
-        }),
+        }), */
     ],
     options   : [],
     telemetry : []
